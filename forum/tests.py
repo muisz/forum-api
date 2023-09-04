@@ -98,6 +98,90 @@ class ForumModelTest(TestCase):
 
         self.assertEqual(len(participants_in_forum), 3) # with initiator
 
+    def test_add_participant_method_with_forum_status_closed(self):
+        try:
+            forum = Forum.create_forum(
+                topic="testing",
+                description="description",
+                initiator=self.user,
+                participants=[self.participants[0].id]
+            )
+            forum.close_by(self.user)
+            forum.add_participant(self.participants[1])
+            
+            self.assertTrue(False)
+        except Exception as error:
+            self.assertIsInstance(error, ValidationError)
+            self.assertIn("forum already closed", str(error))
+
+    def test_close_forum_method(self):
+        forum = Forum.create_forum(
+            topic="testing",
+            description="description",
+            initiator=self.user,
+            participants=[self.participants[0].id]
+        )
+        forum.close_by(self.user)
+
+        self.assertEqual(forum.status, Forum.CLOSED)
+    
+    def test_close_by_not_initiator_method(self):
+        try:
+            forum = Forum.create_forum(
+                topic="testing",
+                description="description",
+                initiator=self.user,
+                participants=[self.participants[0].id]
+            )
+            forum.close_by(self.participants[0])
+            
+            self.assertTrue(False)
+        except Exception as error:
+            self.assertIsInstance(error, ValidationError)
+            self.assertIn("only initiator user can close this forum", str(error))
+    
+    def test_close_by_method_with_status_already_closed(self):
+        try:
+            forum = Forum.create_forum(
+                topic="testing",
+                description="description",
+                initiator=self.user,
+                participants=[self.participants[0].id]
+            )
+            forum.close_by(self.user)
+            forum.close_by(self.user)
+            
+            self.assertTrue(False)
+        except Exception as error:
+            self.assertIsInstance(error, ValidationError)
+            self.assertIn("forum already closed", str(error))
+    
+    def test_check_forum_closed_method(self):
+        forum = Forum.create_forum(
+            topic="testing",
+            description="description",
+            initiator=self.user,
+            participants=[self.participants[0].id]
+        )
+        forum.check_forum_is_closed()
+
+        self.assertTrue(True)
+
+    def test_check_forum_closed_method(self):
+        try:
+            forum = Forum.create_forum(
+                topic="testing",
+                description="description",
+                initiator=self.user,
+                participants=[self.participants[0].id]
+            )
+            forum.close_by(self.user)
+            forum.check_forum_is_closed()
+
+            self.assertTrue(False)
+        except Exception as error:
+            self.assertIsInstance(error, ValidationError)
+            self.assertIn("forum already closed", str(error))        
 
 class ForumParticipantModelTest(TestCase):
     def setUp(self):
@@ -130,3 +214,17 @@ class ForumParticipantModelTest(TestCase):
 
         self.assertFalse(participant.initiator)
         self.assertEqual(participant.status, ForumParticipant.WAITING)
+
+    def test_get_initiator_method(self):
+        ForumParticipant.create_participant(self.forum, self.user, True)
+        initiator = ForumParticipant.get_initiator(self.forum)
+
+        self.assertEqual(initiator, self.user)
+    
+    def test_not_found_get_initiator_method(self):
+        try:
+            ForumParticipant.get_initiator(self.forum)
+            self.assertTrue(False)
+        except Exception as error:
+            self.assertIsInstance(error, NotFound)
+            self.assertIn("initiator not found", str(error))

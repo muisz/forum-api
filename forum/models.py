@@ -1,6 +1,7 @@
 from django.db import models
 from django.contrib.auth import get_user_model
-from rest_framework.exceptions import ValidationError
+from django.utils import timezone
+from rest_framework.exceptions import ValidationError, NotFound
 
 from util.models import BaseModel
 
@@ -11,6 +12,15 @@ class Forum(BaseModel):
     topic = models.CharField(max_length=100)
     topic_lowercase = models.CharField(max_length=100, db_index=True)
     description = models.TextField(null=True)
+    
+    OPEN = 1
+    CLOSED = 2
+    STATUS_CHOICES = (
+        (OPEN, 'Open'),
+        (CLOSED, 'Closed'),
+    )
+    status = models.PositiveSmallIntegerField(choices=STATUS_CHOICES, default=OPEN)
+    closed_at = models.DateTimeField(null=True)
 
     @classmethod
     def create_forum(cls, topic: str, description: str, initiator: User, participants: list):
@@ -34,6 +44,7 @@ class Forum(BaseModel):
         self.topic_lowercase = name.lower()
     
     def add_participant(self, user):
+        self.check_forum_is_closed()
         participant = ForumParticipant.create_participant(
             forum=self,
             user=user,
@@ -47,6 +58,19 @@ class Forum(BaseModel):
     
     def get_participants(self):
         return ForumParticipant.objects.filter(forum=self).order_by('-created_at')
+
+    def close_by(self, user):
+        self.check_forum_is_closed()
+        initiator = ForumParticipant.get_initiator(self)
+        if user != initiator:
+            raise ValidationError("only initiator user can close this forum")
+        self.closed_at = timezone.now()
+        self.status = self.CLOSED
+        self.save()
+    
+    def check_forum_is_closed(self):
+        if self.status == self.CLOSED:
+            raise ValidationError("forum already closed")
 
 
 class ForumParticipant(BaseModel):
@@ -71,3 +95,10 @@ class ForumParticipant(BaseModel):
             participant.status = cls.ACCEPT
         participant.save()
         return participant
+
+    @classmethod
+    def get_initiator(cls, forum):
+        initiator = cls.objects.filter(forum=forum, initiator=True).first()
+        if initiator is None:
+            raise NotFound("initiator not found")
+        return initiator.user
